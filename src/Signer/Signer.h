@@ -1,9 +1,10 @@
 #pragma once
 
 #define MY_ENCODING_TYPE  (PKCS_7_ASN_ENCODING | X509_ASN_ENCODING)
-#define SIGNER_TIMESTAMP_AUTHENTICODE 1
+#define SIGNER_TIMESTAMP_AUTHENTICODE 0x1
+#define SIGNER_TIMESTAMP_RFC3161 0x2
 
-HRESULT SignFile(_In_ PCCERT_CONTEXT signingCertContext, _In_ LPCWSTR packageFilePath, PCWSTR timestampUrl, BOOL isSigningAppx);
+HRESULT SignFile(_In_ PCCERT_CONTEXT signingCertContext, _In_ LPCWSTR packageFilePath, _In_ PCWSTR timestampUrl, _In_ BOOL isSigningAppx, _In_ ALG_ID algorithmId, _In_ BOOL appendSignature);
 HCRYPTPROV UnlockToken(const std::wstring& containerName, const std::string& tokenPin);
 
 typedef struct _SIGNER_FILE_INFO
@@ -128,6 +129,9 @@ typedef struct _SIGNER_CONTEXT
 	DWORD cbBlob;
 	BYTE *pbBlob;
 }SIGNER_CONTEXT, *PSIGNER_CONTEXT;
+
+#define SIG_APPEND 0x1000
+#define szOID_NIST_sha1 "1.3.14.3.2.26"
 
 typedef struct _SIGNER_SIGN_EX2_PARAMS
 {

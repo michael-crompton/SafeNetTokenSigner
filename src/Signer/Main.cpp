@@ -13,12 +13,19 @@
 // https://stackoverflow.com/questions/48804073/signing-an-appxbundle-using-cryptuiwizdigitalsign-api
 // https://msdn.microsoft.com/en-us/library/windows/desktop/jj835834(v=vs.85).aspx
 
+void printUsage()
+{
+	std::wcout << L"usage: signer.exe <certificate thumbprint> <private key container name> <token PIN> <timestamp URL> <mode> <algorithm> <append> <path to file to sign>\n";
+	std::wcout << L"mode = (appx|pe)\n";
+	std::wcout << L"algorithm = (sha1|sha256)\n";
+	std::wcout << L"append = (yes|no)\n";
+}
+
 int wmain(int argc, wchar_t** argv)
 {
-	if (argc < 7)
+	if (argc < 9)
 	{
-		std::wcout << L"usage: signer.exe <certificate thumbprint> <private key container name> <token PIN> <timestamp URL> <mode> <path to file to sign>\n";
-		std::wcout << L"mode = (appx|pe)\n";
+		printUsage();
 		return 1;
 	}
 
@@ -27,12 +34,25 @@ int wmain(int argc, wchar_t** argv)
 	const std::wstring tokenPin = argv[3];
 	const std::wstring timestampUrl = argv[4];
 	const std::wstring mode = argv[5];
-	const std::wstring fileToSign = argv[6];
+	const std::wstring algorithm = argv[6];
+	const std::wstring append = argv[7];
+	const std::wstring fileToSign = argv[8];
 
 	if (mode.compare(L"appx") != 0 && mode.compare(L"pe") != 0)
 	{
-		std::wcout << L"usage: signer.exe <certificate thumbprint> <private key container name> <token PIN> <timestamp URL> <mode> <path to file to sign>\n";
-		std::wcout << L"mode = (appx|pe)\n";
+		printUsage();
+		return 1;
+	}
+
+	if (algorithm.compare(L"sha1") != 0 && algorithm.compare(L"sha256") != 0)
+	{
+		printUsage();
+		return 1;
+	}
+
+	if (append.compare(L"yes") != 0 && append.compare(L"no") != 0)
+	{
+		printUsage();
 		return 1;
 	}
 
@@ -103,7 +123,20 @@ int wmain(int argc, wchar_t** argv)
 
 	std::wcout << L"Signing file " << fileToSign << "... ";
 
-	HRESULT res = SignFile(pDesiredCert, fileToSign.c_str(), timestampUrl.c_str(), mode == L"appx");
+	ALG_ID alg = CALG_SHA;
+	if (algorithm.compare(L"sha256") == 0)
+	{
+		alg = CALG_SHA_256;
+	}
+
+	BOOL bAppend = false;
+	if (append.compare(L"yes") == 0)
+	{
+		bAppend = true;
+	}
+
+
+	HRESULT res = SignFile(pDesiredCert, fileToSign.c_str(), timestampUrl.c_str(), mode == L"appx", alg, bAppend);
 
 	if (res == S_OK)
 	{
@@ -159,7 +192,9 @@ HRESULT SignFile(
 	_In_ PCCERT_CONTEXT signingCertContext,
 	_In_ LPCWSTR packageFilePath,
 	_In_ PCWSTR timestampUrl,
-	_In_ BOOL isSigningAppx)
+	_In_ BOOL isSigningAppx,
+	_In_ ALG_ID algorithmId,
+	_In_ BOOL appendSignature)
 {
 	HRESULT hr = S_OK;
 
@@ -188,15 +223,19 @@ HRESULT SignFile(
 
 	SIGNER_SIGNATURE_INFO signatureInfo = {};
 	signatureInfo.cbSize = sizeof(SIGNER_SIGNATURE_INFO);
-	signatureInfo.algidHash = CALG_SHA_256;
+	signatureInfo.algidHash = algorithmId;
 	signatureInfo.dwAttrChoice = SIGNER_NO_ATTR;
 
 	SIGNER_SIGN_EX2_PARAMS signerParams = {};
 	signerParams.pSubjectInfo = &subjectInfo;
 	signerParams.pSigningCert = &cert;
 	signerParams.pSignatureInfo = &signatureInfo;
-	signerParams.dwTimestampFlags = SIGNER_TIMESTAMP_AUTHENTICODE;
+	signerParams.dwTimestampFlags = SIGNER_TIMESTAMP_RFC3161;
 	signerParams.pwszTimestampURL = timestampUrl;
+	if (appendSignature)
+	{
+		signerParams.dwFlags = SIG_APPEND;
+	}
 
 	APPX_SIP_CLIENT_DATA sipClientData;
 	if (isSigningAppx)
@@ -205,6 +244,12 @@ HRESULT SignFile(
 		sipClientData = {};
 		sipClientData.pSignerParams = &signerParams;
 		signerParams.pSipData = &sipClientData;
+	}
+
+	signerParams.pszAlgorithmOid = szOID_NIST_sha1;
+	if (algorithmId == CALG_SHA_256)
+	{
+		signerParams.pszAlgorithmOid = szOID_NIST_sha256;
 	}
 
 	// Type definition for invoking SignerSignEx2 via GetProcAddress
